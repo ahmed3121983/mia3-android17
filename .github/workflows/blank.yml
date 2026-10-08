@@ -1,0 +1,48 @@
+name: Build Android 17 GSI (arm32_binder64)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+
+      - name: Set up Git & Repo Tool
+        run: |
+          git config --global user.name "Developer"
+          git config --global user.email "dev@example.com"
+          mkdir -p ~/bin
+          curl https://storage.googleapis.com/git-repo-downloads/repo > ~/bin/repo
+          chmod a+x ~/bin/repo
+          echo "$HOME/bin" >> $GITHUB_PATH
+
+      - name: Initialize AOSP 17 Source Code
+        run: |
+          mkdir aosp && cd aosp
+          repo init -u https://android.googlesource.com/platform/manifest -b android-17.0.0_r1 --depth=1
+          repo sync -c -j8 --no-tags --no-clone-bundle
+
+      - name: Patch for ARM32 Binder64 Architecture
+        run: |
+          cd aosp
+          echo "TARGET_ARCH := arm" >> build/make/target/product/aosp_arm.mk
+          echo "TARGET_USES_64_BIT_BINDER := true" >> build/make/target/product/aosp_arm.mk
+
+      - name: Build System Image
+        run: |
+          cd aosp
+          source build/envsetup.sh
+          lunch aosp_arm-userdebug
+          m systemimage -j$(nproc)
+
+      - name: Compress & Upload Result
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android17-System-Image
+          path: aosp/out/target/product/generic/system.img
